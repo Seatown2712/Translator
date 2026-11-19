@@ -187,6 +187,16 @@
       <button type="button" class="btn" id="prep-offline">Download offline models now (about 2 × 75–115 MB, use Wi-Fi)</button>
       <small>Do this once at home. Afterwards the app can translate even if the internet drops (quality is a bit lower than online).</small>
     </div>
+    <div class="field">
+      <label for="set-autostop">When should the microphone stop and translate?</label>
+      <select id="set-autostop">
+        <option value="0">When I tap the microphone again (recommended)</option>
+        <option value="2">Automatically after 2 seconds of silence</option>
+        <option value="3">Automatically after 3 seconds of silence</option>
+        <option value="5">Automatically after 5 seconds of silence</option>
+      </select>
+      <small>Short pauses never cut you off. Each pause becomes the end of a sentence, so the punctuation follows your pauses.</small>
+    </div>
     <label class="check"><input type="checkbox" id="set-autospeak"> Read every translation aloud automatically</label>
     <div class="field">
       <label for="set-rate">Speaking speed</label>
@@ -230,7 +240,7 @@ function showBanner(html){ const b = $('banner'); b.innerHTML = html; b.style.di
 /* ---------- settings ---------- */
 const S = Object.assign({
   name: 'Henrik', guests: 'Guests / Invitados', engine: 'auto', email: '',
-  autospeak: true, rate: 0.95, voiceEn: '', voiceEs: '', fs: 18
+  autospeak: true, autoStop: 0, rate: 0.95, voiceEn: '', voiceEs: '', fs: 18
 }, store.get('settings', {}));
 function saveSettings(){ store.set('settings', S); applySettings(); }
 function applySettings(){
@@ -406,7 +416,7 @@ function pickVoice(lang){
 }
 function speak(text, lang){
   if (!synth || !text) return;
-  stopListening();
+  if (L) stopListening(true);
   synth.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.lang = lang === 'es' ? 'es-ES' : 'en-GB';
@@ -424,52 +434,117 @@ document.addEventListener('pointerdown', () => {
 $('spk-en').addEventListener('click', () => speak($('en-text').value.trim(), 'en'));
 $('spk-es').addEventListener('click', () => speak($('es-text').value.trim(), 'es'));
 
-/* ---------- speech recognition (push-to-talk) ---------- */
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, recSide = null, recText = '', recStoppedByUser = false;
-function stopListening(){
-  if (rec){ recStoppedByUser = true; try { rec.stop(); } catch(e){} }
+/* ---------- automatic punctuation ---------- */
+const Q_EN = /^(do|does|did|is|are|was|were|am|can|could|would|will|shall|should|have|has|had|may|might|must|what|when|where|why|how|who|whom|which|whose|isn't|aren't|wasn't|don't|doesn't|didn't|won't|can't|couldn't|wouldn't|shouldn't|haven't|hasn't)\b/i;
+const Q_ES = /^(qué|cómo|cuándo|dónde|adónde|por qué|cuál|cuáles|quién|quiénes|cuánto|cuánta|cuántos|cuántas|verdad)\b/i;
+function punctuate(t, lang){
+  t = String(t).replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  t = t.charAt(0).toUpperCase() + t.slice(1);
+  if (/[.!?…:;]$/.test(t)) return t;
+  if (lang === 'es'){
+    if (Q_ES.test(t) || /,? (verdad|vale)$/i.test(t)) return '¿' + t + '?';
+    return t + '.';
+  }
+  if (Q_EN.test(t) || /,? right$/i.test(t)) return t + '?';
+  return t + '.';
 }
+
+/* ---------- speech recognition ----------
+   Tap the mic to start, tap again to stop. Short pauses do NOT stop
+   listening: Safari ends a recognition at each pause, so we restart it
+   and treat every pause as the end of a sentence. */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let L = null;   // current listening session
 function setMicUI(side, on){
   $('mic-' + side).classList.toggle('listening', on);
-  $('hint-' + side).textContent = on ? (side === 'en' ? '● Listening… tap the mic again when done' : '● Escuchando… pulse el micrófono al terminar') : '';
+  $('hint-' + side).textContent = on ? (side === 'en' ? '● Listening… tap the mic again when you are done' : '● Escuchando… pulse el micrófono al terminar') : '';
 }
-function startListening(side){
-  if (!SR){
-    showBanner('Speech input is not available here. On iPad: use <b>Safari</b>, switch on Siri (Settings → Siri) and allow Speech Recognition for Safari (Settings → Privacy &amp; Security → Speech Recognition). You can still type.');
-    return;
-  }
-  if (rec && recSide === side){ stopListening(); return; }   // second tap = stop
-  if (rec){ stopListening(); }
-  if (synth) synth.cancel();
-  showBanner('');
+function renderListening(){
+  if (!L) return;
+  const parts = L.segs.slice();
+  if (L.cur.trim()) parts.push(L.cur.trim());
+  $(L.side + '-text').value = parts.join(' ');
+}
+function finishListening(){
+  if (!L) return;
+  const s = L; L = null;
+  clearTimeout(s.restartTimer); clearTimeout(s.silenceTimer);
+  if (s.cur.trim()){ s.segs.push(punctuate(s.cur, s.side)); s.cur = ''; }
+  const text = s.segs.join(' ').trim();
+  $(s.side + '-text').value = text;
+  setMicUI(s.side, false);
+  if (text && !s.cancel) doTranslate(s.side);
+  else setStatus('Ready');
+}
+function stopListening(cancel){
+  if (!L) return;
+  L.userStop = true; if (cancel) L.cancel = true;
+  clearTimeout(L.silenceTimer);
+  if (L.restarting){ finishListening(); return; }
+  try { L.rec.stop(); } catch(e){ finishListening(); }
+}
+function armSilenceTimer(){
+  if (!L) return;
+  clearTimeout(L.silenceTimer);
+  const sec = Number(S.autoStop) || 0;
+  if (sec > 0) L.silenceTimer = setTimeout(() => stopListening(false), sec * 1000);
+}
+function startSession(){
+  const s = L; if (!s) return;
   const r = new SR();
-  r.lang = side === 'en' ? 'en-GB' : 'es-ES';
+  r.lang = s.side === 'en' ? 'en-GB' : 'es-ES';
   r.interimResults = true;
   r.continuous = false;          // iPad Safari is unreliable in continuous mode
   r.maxAlternatives = 1;
-  rec = r; recSide = side; recText = ''; recStoppedByUser = false;
-  const box = $(side + '-text');
+  s.rec = r; s.cur = ''; s.restarting = false;
   r.onresult = (e) => {
+    if (L !== s) return;
     let txt = '';
     for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
-    recText = txt; box.value = txt;
+    s.cur = txt; renderListening(); armSilenceTimer();
   };
   r.onerror = (e) => {
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
-      showBanner('Microphone or speech recognition is blocked. On iPad: Settings → Siri: on. Settings → Privacy &amp; Security → Speech Recognition and Microphone: allow Safari. Then reload this page.');
+      s.fatal = true;
+      showBanner('Microphone or speech recognition is blocked. On iPad: Siri must be on, and Safari needs Microphone and Speech Recognition access. Then reload this page.');
     } else if (e.error !== 'no-speech' && e.error !== 'aborted'){
+      s.fatal = true;
       showBanner('Speech recognition error: ' + esc(e.error));
     }
   };
   r.onend = () => {
-    setMicUI(side, false);
-    const finished = recText.trim();
-    rec = null; recSide = null;
-    if (finished) doTranslate(side);
+    if (L !== s) return;
+    if (s.cur.trim()){ s.segs.push(punctuate(s.cur, s.side)); s.cur = ''; renderListening(); }
+    const tooLong = Date.now() - s.started > 10 * 60 * 1000;
+    if (s.userStop || s.fatal || tooLong){ finishListening(); return; }
+    // a pause: keep listening with a fresh recognizer
+    s.restarting = true;
+    s.restartTimer = setTimeout(() => {
+      if (L !== s) return;
+      try { startSession(); } catch(err){ finishListening(); }
+    }, 120);
   };
-  try { r.start(); setMicUI(side, true); setStatus(side === 'en' ? 'Listening (EN)…' : 'Escuchando (ES)…', 'busy'); }
-  catch(e){ showBanner('Could not start the microphone: ' + esc(e.message)); rec = null; }
+  r.start();
+}
+function startListening(side){
+  if (!SR){
+    showBanner('Speech input is not available here. On iPad: use <b>Safari</b>, switch on Siri and allow Speech Recognition for Safari. You can still type.');
+    return;
+  }
+  if (L && L.side === side){ stopListening(false); return; }   // second tap = done, translate
+  if (L){ stopListening(true); }                              // other side was listening: drop it
+  if (synth) synth.cancel();
+  showBanner('');
+  $(side + '-text').value = '';
+  L = { side, segs: [], cur: '', userStop: false, cancel: false, fatal: false, started: Date.now() };
+  try {
+    startSession();
+    setMicUI(side, true);
+    setStatus(side === 'en' ? 'Listening (EN)…' : 'Escuchando (ES)…', 'busy');
+  } catch(e){
+    showBanner('Could not start the microphone: ' + esc(e.message)); L = null;
+  }
 }
 $('mic-en').addEventListener('click', () => startListening('en'));
 $('mic-es').addEventListener('click', () => startListening('es'));
@@ -483,6 +558,7 @@ const dlg = $('settings');
 $('open-settings').addEventListener('click', () => {
   $('set-name').value = S.name; $('set-guests').value = S.guests; $('set-engine').value = S.engine;
   $('set-email').value = S.email; $('set-autospeak').checked = !!S.autospeak; $('set-rate').value = S.rate;
+  $('set-autostop').value = String(S.autoStop || 0);
   loadVoices();
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
 });
@@ -490,7 +566,7 @@ dlg.addEventListener('close', () => {
   S.name = $('set-name').value.trim() || 'Henrik';
   S.guests = $('set-guests').value.trim() || 'Guests / Invitados';
   S.engine = $('set-engine').value; S.email = $('set-email').value.trim();
-  S.autospeak = $('set-autospeak').checked; S.rate = Number($('set-rate').value);
+  S.autospeak = $('set-autospeak').checked; S.autoStop = Number($('set-autostop').value) || 0; S.rate = Number($('set-rate').value);
   S.voiceEn = $('set-voice-en').value; S.voiceEs = $('set-voice-es').value;
   saveSettings();
 });
@@ -632,7 +708,7 @@ $('new-meeting').addEventListener('click', () => {
 });
 
 /* expose for testing */
-window.__mt = { chunkText, minutesDoc, buildDocx, setLog: (l) => { LOG = l; } };
+window.__mt = { punctuate, chunkText, minutesDoc, buildDocx, setLog: (l) => { LOG = l; } };
 
 if (!SR) showBanner('Tip: open this page in <b>Safari</b> on the iPad to use the microphone. Typing works everywhere.');
 })();

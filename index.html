@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Translator">
+<meta name="theme-color" content="#ffffff">
+<title>Meeting Translator EN ⇄ ES</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --line:#e5e7eb; --text:#111827; --muted:#4b5563;
+    --en:#1d4ed8; --en-soft:#dbeafe; --es:#c2410c; --es-soft:#ffedd5; --ok:#059669;
+    --fs:18px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+  button{font-family:inherit;cursor:pointer}
+  header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:10px 18px;background:#fff;border-bottom:1px solid var(--line);padding-top:max(10px,env(safe-area-inset-top))}
+  .brand{display:flex;align-items:center;gap:10px}
+  .brand b{font-size:17px}.brand small{display:block;color:var(--muted);font-size:12px}
+  .hdr-right{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  #meeting{height:40px;width:300px;max-width:60vw;padding:0 12px;border:1px solid #d1d5db;border-radius:8px;font-size:15px}
+  .pill{display:flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:16px;background:#ecfdf5;color:#065f46;font-size:12px;font-weight:600}
+  .pill i{width:8px;height:8px;border-radius:4px;background:var(--ok);display:block}
+  .pill.busy{background:#eff6ff;color:#1e40af}.pill.busy i{background:#2563eb}
+  .pill.err{background:#fef2f2;color:#991b1b}.pill.err i{background:#dc2626}
+  .icon-btn{width:44px;height:44px;border:1px solid var(--line);background:#fff;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:#374151}
+  main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:16px 18px 0}
+  @media (max-width:760px){main{grid-template-columns:1fr}}
+  .pane{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+  .pane-head{display:flex;justify-content:space-between;align-items:center}
+  .tag{font-size:12px;font-weight:700;letter-spacing:.06em;color:#fff;padding:4px 8px;border-radius:6px;margin-right:8px}
+  .pane-head span.title{font-size:16px;font-weight:600}
+  .who{font-size:12px;color:var(--muted)}
+  textarea{width:100%;height:170px;resize:vertical;padding:12px;border:1px solid #d1d5db;border-radius:10px;font-size:var(--fs);line-height:1.45;font-family:inherit;color:var(--text)}
+  #es-text{background:#fffbf5}
+  .controls{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .round{width:64px;height:64px;border-radius:32px;display:flex;align-items:center;justify-content:center;border:1px solid #d1d5db;background:#fff}
+  .mic-en{background:var(--en);border:none}.mic-es{background:var(--es);border:none}
+  .round.listening{animation:pulse 1.2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(37,99,235,.5)}70%{box-shadow:0 0 0 14px rgba(37,99,235,0)}100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}}
+  .mic-es.listening{animation-name:pulse-es}
+  @keyframes pulse-es{0%{box-shadow:0 0 0 0 rgba(194,65,12,.5)}70%{box-shadow:0 0 0 14px rgba(194,65,12,0)}100%{box-shadow:0 0 0 0 rgba(194,65,12,0)}}
+  .round-group{display:flex;gap:10px}
+  .right-col{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .hint{font-size:12px;color:var(--muted);min-height:16px;text-align:right}
+  .go{height:46px;padding:0 18px;border:none;border-radius:10px;background:#111827;color:#fff;font-size:15px;font-weight:600}
+  .go:disabled{opacity:.5}
+  #log-card{margin:16px 18px 18px;background:#fff;border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;margin-bottom:max(18px,env(safe-area-inset-bottom))}
+  .log-head{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line)}
+  .log-head b{font-size:16px}.log-head small{color:var(--muted);margin-left:8px}
+  .log-actions{display:flex;flex-wrap:wrap;gap:8px}
+  .btn{height:42px;padding:0 14px;border:1px solid #d1d5db;border-radius:9px;background:#fff;font-size:14px;font-weight:500;color:var(--text)}
+  .btn.primary{background:var(--en);border:none;color:#fff;font-weight:600}
+  .btn.danger{border-color:#fecaca;color:#b91c1c}
+  .row{display:grid;grid-template-columns:58px 70px minmax(0,1fr) minmax(0,1fr) 44px;gap:12px;padding:10px 16px;border-bottom:1px solid #f3f4f6;font-size:15px;line-height:1.4;align-items:start}
+  .row.head{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted);background:#f9fafb;padding:8px 16px}
+  .row .from{font-size:12px;font-weight:700}
+  .row button{width:40px;height:40px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #log-body{max-height:45vh;overflow:auto;-webkit-overflow-scrolling:touch}
+  .empty{padding:24px 16px;color:var(--muted);font-size:14px}
+  @media (max-width:760px){.row{grid-template-columns:50px minmax(0,1fr) 44px}.row .c-from,.row .c-es-head{display:none}.row .c-texts{display:flex;flex-direction:column;gap:4px}}
+  dialog{border:none;border-radius:16px;padding:0;width:min(560px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  dialog::backdrop{background:rgba(17,24,39,.45)}
+  .dlg{padding:20px;display:flex;flex-direction:column;gap:14px;max-height:85vh;overflow:auto}
+  .dlg h2{margin:0;font-size:19px}
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field label{font-size:13px;font-weight:600}
+  .field input,.field select{height:42px;padding:0 10px;border:1px solid #d1d5db;border-radius:8px;font-size:15px;font-family:inherit;background:#fff}
+  .field small{color:var(--muted);font-size:12px;line-height:1.4}
+  .check{display:flex;align-items:center;gap:10px;font-size:15px}
+  .check input{width:22px;height:22px}
+  .dlg-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+  .banner{margin:12px 18px 0;padding:12px 14px;border-radius:10px;background:#fef3c7;color:#78350f;font-size:14px;line-height:1.45;display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h8M9 4v4M7 8c0 4 3 7 6 8"/><path d="M13 20l4-9 4 9M14.5 17h5"/></svg>
+    <div><b>Meeting Translator</b><small>English ⇄ Español (España)</small></div>
+  </div>
+  <div class="hdr-right">
+    <label for="meeting" class="who">Meeting</label>
+    <input id="meeting" placeholder="Meeting name / Nombre de la reunión">
+    <span id="status" class="pill"><i></i><span id="status-text">Ready</span></span>
+    <button class="icon-btn" id="font-down" aria-label="Smaller text">A−</button>
+    <button class="icon-btn" id="font-up" aria-label="Larger text">A+</button>
+    <button class="icon-btn" id="open-settings" aria-label="Settings">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>
+    </button>
+  </div>
+</header>
+
+<div id="banner" class="banner"></div>
+
+<main>
+  <section class="pane" aria-label="English side">
+    <div class="pane-head">
+      <div><span class="tag" style="background:var(--en)">EN</span><span class="title">English</span></div>
+      <span class="who" id="who-en">You</span>
+    </div>
+    <textarea id="en-text" placeholder="Type or tap the microphone and speak English…" aria-label="English text"></textarea>
+    <div class="controls">
+      <div class="round-group">
+        <button class="round mic-en" id="mic-en" aria-label="Speak English">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
+        </button>
+        <button class="round" id="spk-en" aria-label="Read English text aloud">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+        </button>
+      </div>
+      <div class="right-col">
+        <span class="hint" id="hint-en"></span>
+        <button class="go" id="go-en">Translate to Spanish →</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="pane" aria-label="Spanish side">
+    <div class="pane-head">
+      <div><span class="tag" style="background:var(--es)">ES</span><span class="title">Español</span></div>
+      <span class="who" id="who-es">Invitados</span>
+    </div>
+    <textarea id="es-text" placeholder="Escriba o pulse el micrófono y hable en español…" aria-label="Texto en español" lang="es"></textarea>
+    <div class="controls">
+      <div class="round-group">
+        <button class="round mic-es" id="mic-es" aria-label="Hablar en español">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
+        </button>
+        <button class="round" id="spk-es" aria-label="Leer el texto en voz alta" style="border:2px solid var(--es);background:#fff7ed">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#c2410c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>
+        </button>
+      </div>
+      <div class="right-col">
+        <span class="hint" id="hint-es"></span>
+        <button class="go" id="go-es">← Traducir al inglés</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<section id="log-card" aria-label="Meeting log">
+  <div class="log-head">
+    <div><b>Meeting log</b><small id="log-count">0 entries</small></div>
+    <div class="log-actions">
+      <button class="btn" id="exp-en">Minutes · EN (.docx)</button>
+      <button class="btn" id="exp-es">Acta · ES (.docx)</button>
+      <button class="btn primary" id="exp-both">Bilingual (.docx)</button>
+      <button class="btn danger" id="new-meeting">New meeting</button>
+    </div>
+  </div>
+  <div class="row head"><span>TIME</span><span class="c-from">FROM</span><span>ENGLISH</span><span class="c-es-head">ESPAÑOL</span><span></span></div>
+  <div id="log-body"></div>
+</section>
+
+<dialog id="settings">
+  <form method="dialog" class="dlg">
+    <h2>Settings</h2>
+    <div class="field">
+      <label for="set-name">Your name (shown in the minutes)</label>
+      <input id="set-name" placeholder="Henrik">
+    </div>
+    <div class="field">
+      <label for="set-guests">Name for the Spanish-speaking side</label>
+      <input id="set-guests" placeholder="Guests / Invitados">
+    </div>
+    <div class="field">
+      <label for="set-engine">Translation engine</label>
+      <select id="set-engine">
+        <option value="auto">Automatic: MyMemory online, offline model as backup</option>
+        <option value="mymemory">MyMemory (online) only</option>
+        <option value="offline">Offline model on this iPad only</option>
+      </select>
+      <small>MyMemory is free with no signup. Without an email: 5,000 characters per day. With an email: 50,000 characters per day (about one hour of meeting).</small>
+    </div>
+    <div class="field">
+      <label for="set-email">Your email for MyMemory (raises the daily limit 10×)</label>
+      <input id="set-email" type="email" placeholder="name@example.com" autocomplete="email">
+    </div>
+    <div class="field">
+      <label>Offline backup</label>
+      <button type="button" class="btn" id="prep-offline">Download offline models now (about 2 × 75–115 MB, use Wi-Fi)</button>
+      <small>Do this once at home. Afterwards the app can translate even if the internet drops (quality is a bit lower than online).</small>
+    </div>
+    <label class="check"><input type="checkbox" id="set-autospeak"> Read every translation aloud automatically</label>
+    <div class="field">
+      <label for="set-rate">Speaking speed</label>
+      <input id="set-rate" type="range" min="0.6" max="1.3" step="0.05">
+    </div>
+    <div class="field">
+      <label for="set-voice-en">English voice</label>
+      <select id="set-voice-en"></select>
+    </div>
+    <div class="field">
+      <label for="set-voice-es">Spanish voice (España)</label>
+      <select id="set-voice-es"></select>
+    </div>
+    <div class="dlg-actions">
+      <button type="button" class="btn" id="test-voices">Test voices</button>
+      <button value="close" class="btn primary">Done</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- small helpers ---------- */
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d){ try { const v = localStorage.getItem('mt_' + k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem('mt_' + k, JSON.stringify(v)); } catch(e){} }
+};
+const pad = (n) => String(n).padStart(2, '0');
+const nowTime = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); };
+
+function setStatus(text, kind){
+  $('status-text').textContent = text;
+  $('status').className = 'pill' + (kind ? ' ' + kind : '');
+}
+function showBanner(html){ const b = $('banner'); b.innerHTML = html; b.style.display = html ? 'block' : 'none'; }
+
+/* ---------- settings ---------- */
+const S = Object.assign({
+  name: 'Henrik', guests: 'Guests / Invitados', engine: 'auto', email: '',
+  autospeak: true, rate: 0.95, voiceEn: '', voiceEs: '', fs: 18
+}, store.get('settings', {}));
+function saveSettings(){ store.set('settings', S); applySettings(); }
+function applySettings(){
+  document.documentElement.style.setProperty('--fs', S.fs + 'px');
+  $('who-en').textContent = S.name || 'You';
+  $('who-es').textContent = S.guests || 'Invitados';
+}
+applySettings();
+
+$('meeting').value = store.get('meeting', 'Meeting ' + today());
+$('meeting').addEventListener('input', () => store.set('meeting', $('meeting').value));
+
+/* ---------- log ---------- */
+let LOG = store.get('log', []);
+function saveLog(){ store.set('log', LOG); }
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function renderLog(){
+  const body = $('log-body');
+  $('log-count').textContent = LOG.length + (LOG.length === 1 ? ' entry' : ' entries') + ' · saved on this iPad';
+  if (!LOG.length){ body.innerHTML = '<div class="empty">Nothing yet. Speak or type on either side, the conversation will be logged here in both languages.</div>'; return; }
+  body.innerHTML = LOG.map((r, i) => {
+    const color = r.from === 'en' ? 'var(--en)' : 'var(--es)';
+    return '<div class="row">' +
+      '<span style="color:var(--muted)">' + esc(r.time) + '</span>' +
+      '<span class="from c-from" style="color:' + color + '">' + (r.from === 'en' ? 'EN' : 'ES') + '</span>' +
+      '<span>' + esc(r.en) + '</span>' +
+      '<span lang="es">' + esc(r.es) + '</span>' +
+      '<button aria-label="Play translation again" data-play="' + i + '">' +
+        '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="' + (r.from === 'en' ? '#c2410c' : '#1d4ed8') + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>' +
+      '</button></div>';
+  }).join('');
+  body.scrollTop = body.scrollHeight;
+}
+$('log-body').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-play]'); if (!b) return;
+  const r = LOG[+b.dataset.play]; if (!r) return;
+  if (r.from === 'en') speak(r.es, 'es'); else speak(r.en, 'en');
+});
+renderLog();
+
+/* ---------- translation engines ---------- */
+function decodeEntities(s){ const t = document.createElement('textarea'); t.innerHTML = s; return t.value; }
+function byteLen(s){ return new TextEncoder().encode(s).length; }
+function chunkText(text, maxBytes){
+  const parts = text.match(/[^.!?;\n]+[.!?;\n]*\s*/g) || [text];
+  const out = []; let cur = '';
+  const pushWords = (p) => { // a single over-long sentence: split on spaces
+    let w = '';
+    for (const word of p.split(/(\s+)/)){
+      if (byteLen(w + word) > maxBytes && w){ out.push(w); w = ''; }
+      w += word;
+    }
+    if (w) out.push(w);
+  };
+  for (const p of parts){
+    if (byteLen(p) > maxBytes){ if (cur){ out.push(cur); cur = ''; } pushWords(p); continue; }
+    if (byteLen(cur + p) > maxBytes){ out.push(cur); cur = ''; }
+    cur += p;
+  }
+  if (cur.trim()) out.push(cur);
+  return out.map(s => s.trim()).filter(Boolean);
+}
+
+async function myMemory(text, from, to){
+  const pieces = chunkText(text, 450);
+  const results = [];
+  for (const piece of pieces){
+    let url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(piece) +
+      '&langpair=' + from + '|' + (to === 'es' ? 'es-ES' : 'en-GB');
+    if (S.email) url += '&de=' + encodeURIComponent(S.email);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
+    let res;
+    try { res = await fetch(url, { signal: ctrl.signal }); }
+    finally { clearTimeout(timer); }
+    if (!res.ok) throw new Error('MyMemory HTTP ' + res.status);
+    const data = await res.json();
+    const t = data && data.responseData && data.responseData.translatedText;
+    const status = Number(data && data.responseStatus);
+    if (!t || (status && status !== 200) || /MYMEMORY WARNING|QUERY LENGTH LIMIT|INVALID/i.test(t)){
+      throw new Error('MyMemory: ' + (t || data.responseDetails || 'no result'));
+    }
+    results.push(decodeEntities(t));
+  }
+  return results.join(' ');
+}
+
+let TF = null; const PIPES = {};
+async function loadPipe(from){
+  if (!TF){
+    setStatus('Loading offline engine…', 'busy');
+    TF = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1');
+  }
+  if (!PIPES[from]){
+    const model = from === 'en' ? 'Xenova/opus-mt-en-es' : 'Xenova/opus-mt-es-en';
+    PIPES[from] = await TF.pipeline('translation', model, {
+      progress_callback: (p) => {
+        if (p.status === 'progress' && p.total) setStatus('Downloading ' + from.toUpperCase() + ' model ' + Math.round(p.progress) + '%', 'busy');
+      }
+    });
+  }
+  return PIPES[from];
+}
+async function offline(text, from){
+  const pipe = await loadPipe(from);
+  setStatus('Translating offline…', 'busy');
+  const pieces = chunkText(text, 400);
+  const out = [];
+  for (const p of pieces){ const r = await pipe(p); out.push(r[0].translation_text); }
+  return out.join(' ');
+}
+
+async function translate(text, from, to){
+  if (S.engine === 'offline') return { text: await offline(text, from), engine: 'offline' };
+  try {
+    return { text: await myMemory(text, from, to), engine: 'MyMemory' };
+  } catch (err){
+    console.warn(err);
+    if (S.engine === 'mymemory') throw err;
+    setStatus('Online failed – using offline…', 'busy');
+    return { text: await offline(text, from), engine: 'offline (backup)' };
+  }
+}
+
+/* ---------- the translate action ---------- */
+let busy = false;
+async function doTranslate(from){
+  const to = from === 'en' ? 'es' : 'en';
+  const src = $(from + '-text').value.trim();
+  if (!src || busy) return;
+  busy = true; $('go-en').disabled = $('go-es').disabled = true;
+  setStatus('Translating…', 'busy');
+  $('hint-' + from).textContent = '';
+  try {
+    const r = await translate(src, from, to);
+    $(to + '-text').value = r.text;
+    LOG.push({ time: nowTime(), from, en: from === 'en' ? src : r.text, es: from === 'es' ? src : r.text, engine: r.engine });
+    saveLog(); renderLog();
+    setStatus('Ready · ' + r.engine);
+    $('hint-' + to).textContent = to === 'es' ? 'Traducido · pulse el altavoz para escuchar' : 'Translated · tap the speaker to listen';
+    if (S.autospeak) speak(r.text, to);
+  } catch (err){
+    setStatus('Translation failed', 'err');
+    showBanner('Translation did not work: ' + esc(err.message) + '<br>Check the internet connection, or switch the engine in Settings (gear icon).');
+  } finally {
+    busy = false; $('go-en').disabled = $('go-es').disabled = false;
+  }
+}
+$('go-en').addEventListener('click', () => doTranslate('en'));
+$('go-es').addEventListener('click', () => doTranslate('es'));
+
+/* ---------- text-to-speech ---------- */
+const synth = window.speechSynthesis;
+let VOICES = [];
+function loadVoices(){
+  if (!synth) return;
+  VOICES = synth.getVoices();
+  fillVoiceSelect('set-voice-en', v => /^en/i.test(v.lang), S.voiceEn, ['en-GB','en-US']);
+  fillVoiceSelect('set-voice-es', v => /^es/i.test(v.lang), S.voiceEs, ['es-ES']);
+}
+function fillVoiceSelect(id, filter, current, prefer){
+  const sel = $(id); const list = VOICES.filter(filter);
+  list.sort((a,b) => (prefer.indexOf(a.lang.replace('_','-')) === -1 ? 9 : prefer.indexOf(a.lang.replace('_','-'))) - (prefer.indexOf(b.lang.replace('_','-')) === -1 ? 9 : prefer.indexOf(b.lang.replace('_','-'))));
+  sel.innerHTML = '<option value="">Automatic</option>' + list.map(v => '<option value="' + esc(v.voiceURI) + '">' + esc(v.name + ' (' + v.lang + ')') + '</option>').join('');
+  sel.value = current || '';
+}
+function pickVoice(lang){
+  const chosen = lang === 'es' ? S.voiceEs : S.voiceEn;
+  if (chosen){ const v = VOICES.find(x => x.voiceURI === chosen); if (v) return v; }
+  const want = lang === 'es' ? ['es-ES','es_ES'] : ['en-GB','en_GB','en-US','en_US'];
+  for (const w of want){ const v = VOICES.find(x => x.lang === w); if (v) return v; }
+  return VOICES.find(x => x.lang.toLowerCase().startsWith(lang)) || null;
+}
+function speak(text, lang){
+  if (!synth || !text) return;
+  stopListening();
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang === 'es' ? 'es-ES' : 'en-GB';
+  const v = pickVoice(lang); if (v) u.voice = v;
+  u.rate = Number(S.rate) || 0.95;
+  synth.speak(u);
+}
+if (synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
+// iPad only allows speech after a first tap: "unlock" it on the first touch
+let unlocked = false;
+document.addEventListener('pointerdown', () => {
+  if (unlocked || !synth) return; unlocked = true;
+  const u = new SpeechSynthesisUtterance(' '); u.volume = 0; synth.speak(u);
+}, { once: false });
+$('spk-en').addEventListener('click', () => speak($('en-text').value.trim(), 'en'));
+$('spk-es').addEventListener('click', () => speak($('es-text').value.trim(), 'es'));
+
+/* ---------- speech recognition (push-to-talk) ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recSide = null, recText = '', recStoppedByUser = false;
+function stopListening(){
+  if (rec){ recStoppedByUser = true; try { rec.stop(); } catch(e){} }
+}
+function setMicUI(side, on){
+  $('mic-' + side).classList.toggle('listening', on);
+  $('hint-' + side).textContent = on ? (side === 'en' ? '● Listening… tap the mic again when done' : '● Escuchando… pulse el micrófono al terminar') : '';
+}
+function startListening(side){
+  if (!SR){
+    showBanner('Speech input is not available here. On iPad: use <b>Safari</b>, switch on Siri (Settings → Siri) and allow Speech Recognition for Safari (Settings → Privacy &amp; Security → Speech Recognition). You can still type.');
+    return;
+  }
+  if (rec && recSide === side){ stopListening(); return; }   // second tap = stop
+  if (rec){ stopListening(); }
+  if (synth) synth.cancel();
+  showBanner('');
+  const r = new SR();
+  r.lang = side === 'en' ? 'en-GB' : 'es-ES';
+  r.interimResults = true;
+  r.continuous = false;          // iPad Safari is unreliable in continuous mode
+  r.maxAlternatives = 1;
+  rec = r; recSide = side; recText = ''; recStoppedByUser = false;
+  const box = $(side + '-text');
+  r.onresult = (e) => {
+    let txt = '';
+    for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    recText = txt; box.value = txt;
+  };
+  r.onerror = (e) => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      showBanner('Microphone or speech recognition is blocked. On iPad: Settings → Siri: on. Settings → Privacy &amp; Security → Speech Recognition and Microphone: allow Safari. Then reload this page.');
+    } else if (e.error !== 'no-speech' && e.error !== 'aborted'){
+      showBanner('Speech recognition error: ' + esc(e.error));
+    }
+  };
+  r.onend = () => {
+    setMicUI(side, false);
+    const finished = recText.trim();
+    rec = null; recSide = null;
+    if (finished) doTranslate(side);
+  };
+  try { r.start(); setMicUI(side, true); setStatus(side === 'en' ? 'Listening (EN)…' : 'Escuchando (ES)…', 'busy'); }
+  catch(e){ showBanner('Could not start the microphone: ' + esc(e.message)); rec = null; }
+}
+$('mic-en').addEventListener('click', () => startListening('en'));
+$('mic-es').addEventListener('click', () => startListening('es'));
+
+/* ---------- font size ---------- */
+$('font-up').addEventListener('click', () => { S.fs = Math.min(34, S.fs + 2); saveSettings(); });
+$('font-down').addEventListener('click', () => { S.fs = Math.max(14, S.fs - 2); saveSettings(); });
+
+/* ---------- settings dialog ---------- */
+const dlg = $('settings');
+$('open-settings').addEventListener('click', () => {
+  $('set-name').value = S.name; $('set-guests').value = S.guests; $('set-engine').value = S.engine;
+  $('set-email').value = S.email; $('set-autospeak').checked = !!S.autospeak; $('set-rate').value = S.rate;
+  loadVoices();
+  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+});
+dlg.addEventListener('close', () => {
+  S.name = $('set-name').value.trim() || 'Henrik';
+  S.guests = $('set-guests').value.trim() || 'Guests / Invitados';
+  S.engine = $('set-engine').value; S.email = $('set-email').value.trim();
+  S.autospeak = $('set-autospeak').checked; S.rate = Number($('set-rate').value);
+  S.voiceEn = $('set-voice-en').value; S.voiceEs = $('set-voice-es').value;
+  saveSettings();
+});
+$('test-voices').addEventListener('click', () => {
+  S.voiceEn = $('set-voice-en').value; S.voiceEs = $('set-voice-es').value; S.rate = Number($('set-rate').value);
+  speak('Hello, this is the English voice.', 'en');
+  setTimeout(() => {
+    const u = new SpeechSynthesisUtterance('Hola, esta es la voz en español.');
+    u.lang = 'es-ES'; const v = pickVoice('es'); if (v) u.voice = v; u.rate = S.rate; synth.speak(u);
+  }, 200);
+});
+$('prep-offline').addEventListener('click', async (e) => {
+  const b = e.currentTarget; b.disabled = true; b.textContent = 'Downloading… keep this screen open';
+  try {
+    await loadPipe('en'); await loadPipe('es');
+    await PIPES.en('Test.'); await PIPES.es('Prueba.');
+    b.textContent = 'Offline models ready ✓'; setStatus('Offline backup ready');
+  } catch (err){
+    b.disabled = false; b.textContent = 'Download failed – tap to retry';
+    setStatus('Offline download failed', 'err');
+  }
+});
+
+/* ---------- Word (.docx) export, built in the browser ---------- */
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(buf){ let c = 0xFFFFFFFF; for (let i = 0; i < buf.length; i++) c = CRC[(c ^ buf[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zip(files){ // files: [{name, data(Uint8Array)}] stored, no compression
+  const enc = new TextEncoder(); const chunks = []; const central = []; let offset = 0;
+  const d = new Date();
+  const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  for (const f of files){
+    const name = enc.encode(f.name); const data = f.data; const crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    chunks.push(new Uint8Array(lh.buffer), name, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+    ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+    ch.setUint16(30, 0, true); ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true); ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + data.length;
+  }
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...chunks, ...central, new Uint8Array(end.buffer)], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+function xml(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function run(text, o){
+  o = o || {};
+  let rpr = '';
+  if (o.bold) rpr += '<w:b/>';
+  if (o.color) rpr += '<w:color w:val="' + o.color + '"/>';
+  if (o.size) rpr += '<w:sz w:val="' + o.size + '"/><w:szCs w:val="' + o.size + '"/>';
+  if (o.lang) rpr += '<w:lang w:val="' + o.lang + '"/>';
+  return '<w:r>' + (rpr ? '<w:rPr>' + rpr + '</w:rPr>' : '') + '<w:t xml:space="preserve">' + xml(text) + '</w:t></w:r>';
+}
+function para(text, o){ o = o || {}; return '<w:p><w:pPr><w:spacing w:after="' + (o.after == null ? 120 : o.after) + '"/></w:pPr>' + run(text, o) + '</w:p>'; }
+function table(header, rows, widths, langs){
+  const total = widths.reduce((a, b) => a + b, 0);
+  const b = '<w:top w:val="single" w:sz="4" w:color="BFBFBF"/><w:left w:val="single" w:sz="4" w:color="BFBFBF"/><w:bottom w:val="single" w:sz="4" w:color="BFBFBF"/><w:right w:val="single" w:sz="4" w:color="BFBFBF"/><w:insideH w:val="single" w:sz="4" w:color="BFBFBF"/><w:insideV w:val="single" w:sz="4" w:color="BFBFBF"/>';
+  const cell = (txt, w, isHead, lang) => '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/>' + (isHead ? '<w:shd w:val="clear" w:color="auto" w:fill="E8EEF9"/>' : '') + '</w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr>' + run(txt, { bold: isHead, size: isHead ? 20 : 21, lang: lang }) + '</w:p></w:tc>';
+  let x = '<w:tbl><w:tblPr><w:tblW w:w="' + total + '" w:type="dxa"/><w:tblBorders>' + b + '</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>';
+  x += widths.map(w => '<w:gridCol w:w="' + w + '"/>').join('') + '</w:tblGrid>';
+  x += '<w:tr><w:trPr><w:tblHeader/></w:trPr>' + header.map((h, i) => cell(h, widths[i], true)).join('') + '</w:tr>';
+  for (const r of rows) x += '<w:tr><w:trPr><w:cantSplit/></w:trPr>' + r.map((c, i) => cell(c, widths[i], false, langs && langs[i])).join('') + '</w:tr>';
+  return x + '</w:tbl>';
+}
+function buildDocx(bodyXml){
+  const enc = new TextEncoder();
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  const files = [
+    { name: '[Content_Types].xml', data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>') },
+    { name: '_rels/.rels', data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>') },
+    { name: 'word/_rels/document.xml.rels', data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>') },
+    { name: 'word/styles.xml', data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ' + W + '><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="en-GB"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>') },
+    { name: 'word/document.xml', data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + W + '><w:body>' + bodyXml + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>') }
+  ];
+  return zip(files);
+}
+function minutesDoc(kind){
+  const meeting = $('meeting').value.trim() || 'Meeting';
+  const first = LOG.length ? LOG[0].time : '', last = LOG.length ? LOG[LOG.length-1].time : '';
+  const me = S.name || 'Henrik', guests = S.guests || 'Guests / Invitados';
+  let x = '';
+  if (kind === 'en'){
+    x += para('Meeting minutes', { bold: true, size: 36, color: '1D4ED8', after: 60 });
+    x += para(meeting, { bold: true, size: 26 });
+    x += para('Date: ' + today() + (first ? '   ·   Time: ' + first + '–' + last : ''), { size: 21, color: '4B5563', after: 40 });
+    x += para('Participants: ' + me + ' (English); ' + guests + ' (Spanish)', { size: 21, color: '4B5563', after: 40 });
+    x += para('Note: machine-translated transcript. Spanish statements are shown in English translation.', { size: 18, color: '6B7280', after: 240 });
+    x += table(['Time', 'Speaker', 'Statement (English)'], LOG.map(r => [r.time, r.from === 'en' ? me : guests, r.en]), [900, 1900, 6838], [null, null, 'en-GB']);
+  } else if (kind === 'es'){
+    x += para('Acta de la reunión', { bold: true, size: 36, color: 'C2410C', after: 60, lang: 'es-ES' });
+    x += para(meeting, { bold: true, size: 26 });
+    x += para('Fecha: ' + today() + (first ? '   ·   Hora: ' + first + '–' + last : ''), { size: 21, color: '4B5563', after: 40, lang: 'es-ES' });
+    x += para('Participantes: ' + me + ' (inglés); ' + guests + ' (español)', { size: 21, color: '4B5563', after: 40, lang: 'es-ES' });
+    x += para('Nota: transcripción con traducción automática. Las intervenciones en inglés se muestran traducidas al español.', { size: 18, color: '6B7280', after: 240, lang: 'es-ES' });
+    x += table(['Hora', 'Interlocutor', 'Intervención (español)'], LOG.map(r => [r.time, r.from === 'en' ? me : guests, r.es]), [900, 1900, 6838], [null, null, 'es-ES']);
+  } else {
+    x += para('Meeting minutes / Acta de la reunión', { bold: true, size: 34, color: '111827', after: 60 });
+    x += para(meeting, { bold: true, size: 26 });
+    x += para('Date / Fecha: ' + today() + (first ? '   ·   ' + first + '–' + last : ''), { size: 21, color: '4B5563', after: 40 });
+    x += para(me + ' (EN) · ' + guests + ' (ES) · Machine translation / traducción automática', { size: 19, color: '6B7280', after: 240 });
+    x += table(['Time', 'Speaker', 'English', 'Español'], LOG.map(r => [r.time, r.from === 'en' ? me + ' (EN)' : guests + ' (ES)', r.en, r.es]), [800, 1500, 3669, 3669], [null, null, 'en-GB', 'es-ES']);
+  }
+  return buildDocx(x);
+}
+async function exportDoc(kind){
+  if (!LOG.length){ showBanner('The log is empty – nothing to save yet.'); return; }
+  const safe = ($('meeting').value.trim() || 'Meeting').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'Meeting';
+  const fname = safe + '_' + (kind === 'en' ? 'Minutes_EN' : kind === 'es' ? 'Acta_ES' : 'Minutes_EN-ES') + '_' + today() + '.docx';
+  const blob = minutesDoc(kind);
+  const file = new File([blob], fname, { type: blob.type });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file], title: fname });   // iPad: Save to Files, Mail, etc.
+      return;
+    }
+  } catch (err){ if (err && err.name === 'AbortError') return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+$('exp-en').addEventListener('click', () => exportDoc('en'));
+$('exp-es').addEventListener('click', () => exportDoc('es'));
+$('exp-both').addEventListener('click', () => exportDoc('both'));
+$('new-meeting').addEventListener('click', () => {
+  if (LOG.length && !confirm('Start a new meeting? The current log will be cleared. Save the minutes first if you need them.')) return;
+  LOG = []; saveLog(); renderLog();
+  $('en-text').value = ''; $('es-text').value = '';
+  $('meeting').value = 'Meeting ' + today(); store.set('meeting', $('meeting').value);
+});
+
+/* expose for testing */
+window.__mt = { chunkText, minutesDoc, buildDocx, setLog: (l) => { LOG = l; } };
+
+if (!SR) showBanner('Tip: open this page in <b>Safari</b> on the iPad to use the microphone. Typing works everywhere.');
+})();
+</script>
+</body>
+</html>

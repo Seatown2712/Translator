@@ -170,15 +170,6 @@
       <input id="set-guests" placeholder="Guests / Invitados">
     </div>
     <div class="field">
-      <label for="set-asr">Speech recognition (microphone)</label>
-      <select id="set-asr">
-        <option value="whisper">Whisper on this iPad – most reliable, good punctuation (recommended)</option>
-        <option value="apple">Apple / Siri – shows text live while you speak</option>
-      </select>
-      <small>Whisper records while the mic is on and writes the text a few seconds after you tap stop. It works every time, also after read-aloud. It needs a one-time download (about 80 MB) – tap the button below on Wi-Fi.</small>
-      <button type="button" class="btn" id="prep-whisper">Download Whisper speech model now</button>
-    </div>
-    <div class="field">
       <label for="set-engine">Translation engine</label>
       <select id="set-engine">
         <option value="auto">Automatic: MyMemory online, offline model as backup</option>
@@ -258,7 +249,7 @@ function showBanner(html){ const b = $('banner'); b.innerHTML = html; b.style.di
 /* ---------- settings ---------- */
 const S = Object.assign({
   name: 'Henrik', guests: 'Guests / Invitados', engine: 'auto', email: '',
-  autospeak: true, asr: 'whisper', autoStop: 0, rate: 0.9, pause: 0.7, voiceEn: '', voiceEs: '', fs: 18
+  autospeak: true, autoStop: 0, rate: 0.9, pause: 0.7, voiceEn: '', voiceEs: '', fs: 18
 }, store.get('settings', {}));
 function saveSettings(){ store.set('settings', S); applySettings(); }
 function applySettings(){
@@ -443,8 +434,6 @@ function speak(text, lang){
   if (L){ stopListening(true); finishListening(); }
   synth.cancel();
   const token = ++speakToken;
-  try { usedSpeech = true; } catch(e){}
-  if (W) stopWhisper(true);
   const sentences = splitSentences(text);
   const pauseMs = Math.round((S.pause == null ? 0.7 : Number(S.pause)) * 1000);
   const v = pickVoice(lang);
@@ -638,130 +627,8 @@ function startListening(side){
     const s = L; L = null; if (s) killRec(s.rec); setMicUI(side, false);
   }
 }
-
-/* ---------- Whisper: on-device speech recognition (robust on iPad) ---------- */
-let W = null;          // current recording
-let ASR = null;
-async function loadAsr(){
-  if (!TF){ setStatus('Loading speech engine…', 'busy'); TF = await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1'); }
-  if (!ASR){
-    ASR = await TF.pipeline('automatic-speech-recognition', 'Xenova/whisper-base', {
-      progress_callback: (p) => { if (p.status === 'progress' && p.total) setStatus('Downloading speech model ' + Math.round(p.progress) + '%', 'busy'); }
-    });
-  }
-  return ASR;
-}
-async function to16k(blob){
-  const AC = window.AudioContext || window.webkitAudioContext;
-  const ac = new AC();
-  const buf = await ac.decodeAudioData(await blob.arrayBuffer());
-  try { ac.close(); } catch(e){}
-  const len = Math.max(1, Math.ceil(buf.duration * 16000));
-  const off = new OfflineAudioContext(1, len, 16000);
-  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
-  const out = await off.startRendering();
-  return out.getChannelData(0);
-}
-function whisperUI(side, on){
-  $('mic-' + side).classList.toggle('listening', on);
-  $('hint-' + side).textContent = on ? (side === 'en' ? '● Recording… tap the mic again when you are done' : '● Grabando… pulse el micrófono al terminar') : '';
-}
-async function startWhisper(side){
-  if (W && W.side === side){ stopWhisper(false); return; }
-  if (W) stopWhisper(true);
-  if (synth) synth.cancel(); speakToken++;
-  showBanner('');
-  if (!navigator.mediaDevices || !window.MediaRecorder){ showBanner('Recording is not supported in this browser. Switch to Apple speech recognition in Settings.'); return; }
-  const me = { side, chunks: [], cancel: false };
-  W = me; whisperUI(side, true); setStatus(side === 'en' ? 'Recording (EN)…' : 'Grabando (ES)…', 'busy');
-  $(side + '-text').value = '';
-  try {
-    me.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-  } catch (err){
-    W = null; whisperUI(side, false); setStatus('Microphone blocked', 'err');
-    showBanner('The microphone is blocked for Safari. iPad: Settings → Apps → Safari → Microphone → Allow. Then reload the page.');
-    return;
-  }
-  if (W !== me){ me.stream.getTracks().forEach(t => t.stop()); return; }
-  const type = MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
-             : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
-  me.rec = type ? new MediaRecorder(me.stream, { mimeType: type }) : new MediaRecorder(me.stream);
-  me.rec.ondataavailable = (e) => { if (e.data && e.data.size) me.chunks.push(e.data); };
-  me.rec.onstop = () => onWhisperStop(me);
-  me.rec.start(250);
-  const sec = Number(S.autoStop) || 0;
-  me.maxTimer = setTimeout(() => { if (W === me) stopWhisper(false); }, 3 * 60 * 1000);   // safety: max 3 minutes
-  if (sec > 0) armWhisperSilence(me, sec);
-}
-function armWhisperSilence(me, sec){
-  // simple level meter: stop after `sec` seconds below threshold (after some speech)
-  try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    me.ac = new AC(); const an = me.ac.createAnalyser(); an.fftSize = 1024;
-    me.ac.createMediaStreamSource(me.stream).connect(an);
-    const data = new Uint8Array(an.fftSize); let spoke = false, quietSince = Date.now();
-    me.meter = setInterval(() => {
-      an.getByteTimeDomainData(data); let peak = 0;
-      for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
-      if (peak > 12){ spoke = true; quietSince = Date.now(); }
-      else if (spoke && Date.now() - quietSince > sec * 1000 && W === me) stopWhisper(false);
-    }, 150);
-  } catch(e){}
-}
-function stopWhisper(cancel){
-  const me = W; if (!me) return;
-  W = null; me.cancel = !!cancel;
-  clearTimeout(me.maxTimer); clearInterval(me.meter);
-  try { me.ac && me.ac.close(); } catch(e){}
-  whisperUI(me.side, false);
-  if (me.rec && me.rec.state !== 'inactive'){ try { me.rec.stop(); } catch(e){ onWhisperStop(me); } }
-  else onWhisperStop(me);
-}
-async function onWhisperStop(me){
-  if (me.done) return; me.done = true;
-  if (me.stream) me.stream.getTracks().forEach(t => t.stop());
-  if (me.cancel || !me.chunks.length){ setStatus('Ready'); return; }
-  const box = $(me.side + '-text');
-  try {
-    setStatus('Writing down what was said…', 'busy');
-    box.placeholder = me.side === 'en' ? 'Transcribing…' : 'Transcribiendo…';
-    const audio = await to16k(new Blob(me.chunks, { type: me.chunks[0].type }));
-    if (audio.length < 16000 * 0.4){ setStatus('Ready'); return; }   // shorter than 0.4 s
-    const pipe = await loadAsr();
-    setStatus('Writing down what was said…', 'busy');
-    const out = await pipe(audio, { language: me.side === 'en' ? 'english' : 'spanish', task: 'transcribe', chunk_length_s: 30, stride_length_s: 5 });
-    let text = (out && out.text ? out.text : '').replace(/\s+/g, ' ').trim();
-    if (/^\[.*\]$|^\(.*\)$/.test(text)) text = '';                    // e.g. "[BLANK_AUDIO]"
-    box.value = text;
-    if (text) doTranslate(me.side); else { setStatus('Ready'); showBanner('Nothing was heard. Please try again, a bit closer to the iPad.'); }
-  } catch (err){
-    setStatus('Speech engine failed', 'err');
-    showBanner('Whisper could not run: ' + esc(err.message) + '. Check the internet for the first download, or switch to Apple speech recognition in Settings.');
-  } finally {
-    box.placeholder = me.side === 'en' ? 'Type or tap the microphone and speak English…' : 'Escriba o pulse el micrófono y hable en español…';
-  }
-}
-$('prep-whisper').addEventListener('click', async (e) => {
-  const b = e.currentTarget; b.disabled = true; b.textContent = 'Downloading… keep this screen open';
-  try { const p = await loadAsr(); await p(new Float32Array(16000), { language: 'english' }); b.textContent = 'Whisper speech model ready ✓'; setStatus('Speech model ready'); }
-  catch (err){ b.disabled = false; b.textContent = 'Download failed – tap to retry'; setStatus('Download failed', 'err'); }
-});
-
-/* ---------- Apple recognition: wake the iPad's microphone after read-aloud ---------- */
-let usedSpeech = false;
-async function micTap(side){
-  if ((S.asr || 'whisper') === 'whisper'){ startWhisper(side); return; }
-  if (L){ startListening(side); return; }
-  if (usedSpeech && navigator.mediaDevices){
-    // after read-aloud the iPad keeps the audio in "playback" mode; a short microphone
-    // request switches it back to "record" so Siri recognition can hear again
-    try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach(t => t.stop()); } catch(e){}
-    usedSpeech = false;
-  }
-  startListening(side);
-}
-$('mic-en').addEventListener('click', () => micTap('en'));
-$('mic-es').addEventListener('click', () => micTap('es'));
+$('mic-en').addEventListener('click', () => startListening('en'));
+$('mic-es').addEventListener('click', () => startListening('es'));
 
 /* ---------- font size ---------- */
 $('font-up').addEventListener('click', () => { S.fs = Math.min(34, S.fs + 2); saveSettings(); });
@@ -773,7 +640,6 @@ $('open-settings').addEventListener('click', () => {
   $('set-name').value = S.name; $('set-guests').value = S.guests; $('set-engine').value = S.engine;
   $('set-email').value = S.email; $('set-autospeak').checked = !!S.autospeak; $('set-rate').value = S.rate;
   $('set-autostop').value = String(S.autoStop || 0);
-  $('set-asr').value = S.asr || 'whisper';
   $('set-pause').value = String(S.pause == null ? 0.7 : S.pause);
   loadVoices();
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
@@ -782,7 +648,7 @@ dlg.addEventListener('close', () => {
   S.name = $('set-name').value.trim() || 'Henrik';
   S.guests = $('set-guests').value.trim() || 'Guests / Invitados';
   S.engine = $('set-engine').value; S.email = $('set-email').value.trim();
-  S.autospeak = $('set-autospeak').checked; S.autoStop = Number($('set-autostop').value) || 0; S.asr = $('set-asr').value; S.pause = Number($('set-pause').value); S.rate = Number($('set-rate').value);
+  S.autospeak = $('set-autospeak').checked; S.autoStop = Number($('set-autostop').value) || 0; S.pause = Number($('set-pause').value); S.rate = Number($('set-rate').value);
   S.voiceEn = $('set-voice-en').value; S.voiceEs = $('set-voice-es').value;
   saveSettings();
 });

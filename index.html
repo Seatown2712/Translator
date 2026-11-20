@@ -158,6 +158,11 @@
   <div id="log-body"></div>
 </section>
 
+<section id="diag-card" style="display:none;margin:0 18px 18px;background:#111827;color:#d1fae5;border-radius:12px;padding:12px 14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="color:#fff">Diagnostics</b><button class="btn" id="diag-clear" style="height:34px">Clear</button></div>
+  <pre id="diag" style="margin:0;white-space:pre-wrap;font:12px/1.45 ui-monospace,Menlo,monospace;max-height:220px;overflow:auto"></pre>
+</section>
+
 <dialog id="settings">
   <form method="dialog" class="dlg">
     <h2>Settings</h2>
@@ -172,8 +177,8 @@
     <div class="field">
       <label for="set-asr">Speech recognition (microphone)</label>
       <select id="set-asr">
-        <option value="whisper">Whisper on this iPad – most reliable, good punctuation (recommended)</option>
         <option value="apple">Apple / Siri – shows text live while you speak</option>
+        <option value="whisper">Whisper on this iPad – text appears after you stop</option>
       </select>
       <small>Whisper records while the mic is on and writes the text a few seconds after you tap stop. It works every time, also after read-aloud. It needs a one-time download (about 80 MB) – tap the button below on Wi-Fi.</small>
       <button type="button" class="btn" id="prep-whisper">Download Whisper speech model now</button>
@@ -206,6 +211,7 @@
       </select>
       <small>Short pauses never cut you off. Each pause becomes the end of a sentence, so the punctuation follows your pauses.</small>
     </div>
+    <label class="check"><input type="checkbox" id="set-diag"> Show diagnostics (for troubleshooting the microphone)</label>
     <label class="check"><input type="checkbox" id="set-autospeak"> Read every translation aloud automatically</label>
     <div class="field">
       <label for="set-pause">Pause between sentences when reading aloud</label>
@@ -253,12 +259,20 @@ function setStatus(text, kind){
   $('status-text').textContent = text;
   $('status').className = 'pill' + (kind ? ' ' + kind : '');
 }
+const DIAG = [];
+const T0 = Date.now();
+function dlog(msg){
+  const line = ((Date.now() - T0) / 1000).toFixed(1).padStart(6) + 's  ' + msg;
+  DIAG.push(line); if (DIAG.length > 80) DIAG.shift();
+  const el = document.getElementById('diag'); if (el){ el.textContent = DIAG.join('\n'); el.scrollTop = el.scrollHeight; }
+}
+function showDiag(){ const c = document.getElementById('diag-card'); if (c) c.style.display = (typeof S !== 'undefined' && S.diag) ? 'block' : 'none'; }
 function showBanner(html){ const b = $('banner'); b.innerHTML = html; b.style.display = html ? 'block' : 'none'; }
 
 /* ---------- settings ---------- */
 const S = Object.assign({
   name: 'Henrik', guests: 'Guests / Invitados', engine: 'auto', email: '',
-  autospeak: true, asr: 'whisper', autoStop: 0, rate: 0.9, pause: 0.7, voiceEn: '', voiceEs: '', fs: 18
+  autospeak: true, asr: 'apple', autoStop: 0, rate: 0.9, pause: 0.7, voiceEn: '', voiceEs: '', fs: 18
 }, store.get('settings', {}));
 function saveSettings(){ store.set('settings', S); applySettings(); }
 function applySettings(){
@@ -267,6 +281,8 @@ function applySettings(){
   $('who-es').textContent = S.guests || 'Invitados';
 }
 applySettings();
+showDiag();
+$('diag-clear').addEventListener('click', () => { DIAG.length = 0; $('diag').textContent = ''; });
 
 $('meeting').value = store.get('meeting', 'Meeting ' + today());
 $('meeting').addEventListener('input', () => store.set('meeting', $('meeting').value));
@@ -443,6 +459,7 @@ function speak(text, lang){
   if (L){ stopListening(true); finishListening(); }
   synth.cancel();
   const token = ++speakToken;
+  dlog('read-aloud: ' + lang + ' (' + String(text).length + ' chars)');
   try { usedSpeech = true; } catch(e){}
   if (W) stopWhisper(true);
   const sentences = splitSentences(text);
@@ -496,6 +513,7 @@ function punctuate(t, lang){
    - watchdogs make sure the app can never get stuck "listening" */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let L = null;   // current listening session
+let recCounter = 0, lastRecEnd = 0;
 let sessionId = 0;
 function setMicUI(side, on){
   $('mic-' + side).classList.toggle('listening', on);
@@ -554,8 +572,14 @@ function startSession(){
   r.maxAlternatives = 1;
   s.rec = r; s.restarting = false; s.started_ok = false; s.sessionStart = Date.now();
   const alive = () => { if (L === s && s.rec === r){ s.started_ok = true; clearTimeout(s.startWatch); } };
-  r.onstart = alive; r.onaudiostart = alive;
+  const n = ++recCounter;
+  r.onstart = () => { dlog('#' + n + ' start'); alive(); };
+  r.onaudiostart = () => { dlog('#' + n + ' audio start (mic delivers sound)'); alive(); };
+  r.onsoundstart = () => dlog('#' + n + ' sound detected');
+  r.onspeechstart = () => dlog('#' + n + ' speech detected');
+  r.onaudioend = () => dlog('#' + n + ' audio end');
   r.onresult = (e) => {
+    dlog('#' + n + ' result: "' + (e.results[e.results.length-1][0].transcript || '').slice(0, 40) + '"');
     if (L !== s || s.rec !== r) return;
     alive();
     s.live = [];
@@ -565,6 +589,7 @@ function startSession(){
     renderListening(); armSilenceTimer();
   };
   r.onerror = (e) => {
+    dlog('#' + n + ' ERROR: ' + e.error);
     if (L !== s || s.rec !== r) return;
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
       s.fatal = true;
@@ -583,6 +608,7 @@ function startSession(){
     }
   };
   r.onend = () => {
+    dlog('#' + n + ' end'); lastRecEnd = Date.now();
     if (L !== s || s.rec !== r) return;
     if (s.retryCapture && !s.userStop){
       s.retryCapture = false; s.restarting = true;
@@ -602,6 +628,7 @@ function startSession(){
       try { startSession(); armStartWatch(s); } catch(err){ finishListening(); }
     }, 150);
   };
+  dlog('#' + n + ' start() called · ' + r.lang + ' · read-aloud active: ' + !!(synth && synth.speaking));
   r.start();
 }
 function armStartWatch(s){
@@ -750,12 +777,25 @@ $('prep-whisper').addEventListener('click', async (e) => {
 /* ---------- Apple recognition: wake the iPad's microphone after read-aloud ---------- */
 let usedSpeech = false;
 async function micTap(side){
-  if ((S.asr || 'whisper') === 'whisper'){ startWhisper(side); return; }
+  if ((S.asr || 'apple') === 'whisper'){ startWhisper(side); return; }
   if (L){ startListening(side); return; }
-  if (usedSpeech && navigator.mediaDevices){
-    // after read-aloud the iPad keeps the audio in "playback" mode; a short microphone
-    // request switches it back to "record" so Siri recognition can hear again
-    try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach(t => t.stop()); } catch(e){}
+  dlog('mic tapped (' + side + ') · read-aloud speaking: ' + !!(synth && synth.speaking) + ' · ms since last recogniser ended: ' + (lastRecEnd ? Date.now() - lastRecEnd : '-'));
+  // 1) stop read-aloud and wait until the iPad has really finished speaking
+  if (synth && (synth.speaking || synth.pending)){
+    synth.cancel(); speakToken++;
+    const t = Date.now();
+    while ((synth.speaking || synth.pending) && Date.now() - t < 1500) await new Promise(r => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 250));
+    dlog('read-aloud stopped');
+  }
+  // 2) give the previous recogniser time to release the microphone
+  const since = Date.now() - lastRecEnd;
+  if (lastRecEnd && since < 600) await new Promise(r => setTimeout(r, 600 - since));
+  // 3) after read-aloud, switch the iPad audio back to "record" mode
+  if (usedSpeech && S.micWake !== false && navigator.mediaDevices){
+    try { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach(t => t.stop()); dlog('audio switched back to record mode'); }
+    catch(e){ dlog('audio wake failed: ' + e.name); }
+    await new Promise(r => setTimeout(r, 300));
     usedSpeech = false;
   }
   startListening(side);
@@ -773,7 +813,8 @@ $('open-settings').addEventListener('click', () => {
   $('set-name').value = S.name; $('set-guests').value = S.guests; $('set-engine').value = S.engine;
   $('set-email').value = S.email; $('set-autospeak').checked = !!S.autospeak; $('set-rate').value = S.rate;
   $('set-autostop').value = String(S.autoStop || 0);
-  $('set-asr').value = S.asr || 'whisper';
+  $('set-asr').value = S.asr || 'apple';
+  $('set-diag').checked = !!S.diag;
   $('set-pause').value = String(S.pause == null ? 0.7 : S.pause);
   loadVoices();
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
@@ -782,7 +823,7 @@ dlg.addEventListener('close', () => {
   S.name = $('set-name').value.trim() || 'Henrik';
   S.guests = $('set-guests').value.trim() || 'Guests / Invitados';
   S.engine = $('set-engine').value; S.email = $('set-email').value.trim();
-  S.autospeak = $('set-autospeak').checked; S.autoStop = Number($('set-autostop').value) || 0; S.asr = $('set-asr').value; S.pause = Number($('set-pause').value); S.rate = Number($('set-rate').value);
+  S.autospeak = $('set-autospeak').checked; S.autoStop = Number($('set-autostop').value) || 0; S.asr = $('set-asr').value; S.diag = $('set-diag').checked; showDiag(); S.pause = Number($('set-pause').value); S.rate = Number($('set-rate').value);
   S.voiceEn = $('set-voice-en').value; S.voiceEs = $('set-voice-es').value;
   saveSettings();
 });
